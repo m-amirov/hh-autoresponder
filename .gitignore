@@ -1,0 +1,23 @@
+# секреты и локальные данные
+.env
+configs/resume.txt
+
+# рантайм-данные (база, сессии браузера, токены, маркеры)
+data/
+*.db
+*.session
+sessions/
+
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+
+# логи и мусор ОС
+logs/
+*.log
+.DS_Store
