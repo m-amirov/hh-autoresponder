@@ -1,3 +1,48 @@
+<div align="center">
+
+<svg width="800" height="200" viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0f0a"/>
+      <stop offset="100%" style="stop-color:#0d1f14"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#4ade80"/>
+    </linearGradient>
+    <linearGradient id="accentV" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#15803d"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="200" fill="url(#bg)" rx="14"/>
+  <rect x="0" y="0" width="5" height="200" fill="url(#accentV)" rx="2"/>
+  <rect x="0" y="0" width="800" height="2" fill="url(#accent)" rx="1" opacity="0.4"/>
+  <rect x="30" y="26" width="188" height="22" rx="11" fill="#22c55e18" stroke="#22c55e40" stroke-width="1"/>
+  <circle cx="46" cy="37" r="4" fill="#22c55e"/>
+  <text x="116" y="42" font-family="'Courier New', monospace" font-size="11" fill="#22c55e" text-anchor="middle" letter-spacing="1">TELEGRAM BOT · hh.ru</text>
+  <text x="30" y="98" font-family="Georgia, 'Times New Roman', serif" font-size="40" font-weight="bold" fill="#f8f8f8" letter-spacing="-1">hh-autoresponder</text>
+  <text x="30" y="128" font-family="'Courier New', monospace" font-size="13" fill="#6b7280" letter-spacing="0.5">Автоотклики на вакансии hh.ru. Бесплатно, open-source.</text>
+  <rect x="30" y="152" width="112" height="26" rx="5" fill="#12211a" stroke="#22553a" stroke-width="1"/>
+  <text x="86" y="169" font-family="'Courier New', monospace" font-size="11" fill="#7dd3a8" text-anchor="middle">авто-отклики</text>
+  <rect x="152" y="152" width="100" height="26" rx="5" fill="#12211a" stroke="#22553a" stroke-width="1"/>
+  <text x="202" y="169" font-family="'Courier New', monospace" font-size="11" fill="#7dd3a8" text-anchor="middle">Python 3.12</text>
+  <rect x="262" y="152" width="92" height="26" rx="5" fill="#12211a" stroke="#22553a" stroke-width="1"/>
+  <text x="308" y="169" font-family="'Courier New', monospace" font-size="11" fill="#7dd3a8" text-anchor="middle">MIT лицензия</text>
+  <text x="668" y="120" font-family="Georgia, serif" font-size="72" fill="#ffffff05" font-weight="bold">hh</text>
+</svg>
+
+<br/>
+
+[![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white)]()
+[![Telegram](https://img.shields.io/badge/Telegram-Digital--трафик-2CA5E0?style=flat-square&logo=telegram&logoColor=white)](https://t.me/trafficisobar)
+[![Version](https://img.shields.io/badge/version-1.0.0-e63946?style=flat-square)]()
+
+</div>
+
+<br/>
+
 # hh-autoresponder — бот автооткликов на вакансии hh.ru (хх ру)
 
 **Автоотклики на hh.ru на автопилоте.** Телеграм-бот сам ищет вакансии на
@@ -155,6 +200,13 @@ cp .env.example .env      # затем открой .env и заполни
 код открыт, данные никуда не уходят, настройки — полностью твои, платить не надо.
 
 **Python нужен?** Да, Python 3.12+. Всё остальное ставится одной командой.
+
+---
+
+## См. также
+
+- [digitaltraffic-detectai](https://github.com/YAMAKAYAMACO/digitaltraffic-detectai) — гуманизатор текста для Claude: очеловечить текст и убрать признаки ИИ из русского текста (бесплатно).
+- Другие проекты автора: [github.com/YAMAKAYAMACO](https://github.com/YAMAKAYAMACO)
 
 ---
 
