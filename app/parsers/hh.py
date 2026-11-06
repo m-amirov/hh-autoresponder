@@ -29,9 +29,6 @@ EXPERIENCE_MAP = {
 class HHParser:
     platform = "hh"
 
-    async def login(self) -> bool:
-        return True
-
     async def search_vacancies(self, query: str, **filters) -> list[ParsedVacancy]:
         params = {
             "text": query,
@@ -43,11 +40,14 @@ class HHParser:
         if filters.get("remote", True):
             params["schedule"] = "remote"
 
+        if filters.get("area"):
+            params["area"] = str(filters["area"])
+
         exp = filters.get("experience")
         if exp and exp in EXPERIENCE_MAP:
             params["experience"] = EXPERIENCE_MAP[exp]
 
-        pages = int(filters.get("pages", 3))  # берём несколько страниц для большего пула
+        pages = max(1, min(int(filters.get("pages", 1)), 3))
         vacancies = []
         for page in range(pages):
             params["page"] = page
@@ -181,6 +181,10 @@ class HHParser:
 
     async def apply_to_vacancy(self, url: str, cover_letter: str, screenshot_name: str | None = None) -> bool:
         """Apply via Playwright if available, otherwise skip."""
+        from app.config import settings
+        if settings.preview_only:
+            log.warning("hh_apply_blocked_in_preview_mode", url=url)
+            return False
         pw = self._get_playwright()
         if pw:
             return await pw.apply_to_vacancy(url, cover_letter, screenshot_name=screenshot_name)

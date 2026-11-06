@@ -3,8 +3,8 @@ Playwright-based hh.ru operations: login, apply, messages, negotiations.
 Only used when Playwright is available (VPS deployment).
 """
 
-import asyncio
 import re
+from typing import Any
 
 import structlog
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeout
@@ -195,6 +195,9 @@ class HHPlaywright:
             pass
 
     async def apply_to_vacancy(self, vacancy_url: str, cover_letter: str, screenshot_name: str | None = None) -> bool | str:
+        if settings.preview_only:
+            log.warning("playwright_apply_blocked_in_preview_mode", url=vacancy_url)
+            return False
         """Apply to vacancy via Playwright browser automation.
 
         Handles employer questions/test tasks: extracts question text,
@@ -564,20 +567,11 @@ class HHPlaywright:
                         continue
                     log.info("hh_radio_question", question=question[:120], opts=[o["label"][:30] for o in options])
 
-                    # Smart defaults — avoid AI call for obvious cases
+                    if not cfg.ai_enabled or not cfg.llm_api_key or not cfg.resume_text.strip():
+                        raise RuntimeError("Анкета требует ручного ответа; ИИ-профиль не настроен")
+
+                    # Never infer personal preferences from option text.
                     chosen_idx = None
-                    labels_lc = [o["label"].lower() for o in options]
-                    # "все варианты подходят" / "any" — pick if present
-                    for i, lbl in enumerate(labels_lc):
-                        if "все" in lbl and ("вариант" in lbl or "подход" in lbl):
-                            chosen_idx = i
-                            break
-                    # If "удалён" in any option and remote-friendly resume → that one
-                    if chosen_idx is None:
-                        for i, lbl in enumerate(labels_lc):
-                            if "удал" in lbl or "remote" in lbl:
-                                chosen_idx = i
-                                break
 
                     # AI fallback for non-trivial choices
                     if chosen_idx is None and len(options) > 1:
@@ -590,16 +584,8 @@ class HHPlaywright:
                         )
                         ai_system = (
                             "Ты — кандидат, выбирающий ответ на вопрос работодателя.\n"
+                            "Не придумывай сведения: при недостатке фактов ответь НЕИЗВЕСТНО.\n"
                             "Профиль кандидата:\n"
-                            "- Проживает в Москве\n"
-                            "- Готов работать удалённо, гибридно, формат разъездной приемлем\n"
-                            "- НЕ готов к переезду\n"
-                            "- К редким командировкам готов\n"
-                            "- Желаемая зарплата от 150 тыс. рублей на руки, готов обсуждать\n"
-                            "- Уровень: middle BA/SA, 3+ года в IT (общий стаж 11+ лет)\n"
-                            "- Английский B1 (Intermediate)\n"
-                            "- Опыт с платёжными системами (ЮKassa, Сбербанк, платёжные шлюзы),\n"
-                            "  1С-интеграциями, CRM, e-commerce, SaaS-подписочной моделью\n\n"
                             f"Резюме:\n{cfg.resume_text[:1500]}"
                         )
                         try:
@@ -613,7 +599,7 @@ class HHPlaywright:
                             log.warning("hh_radio_ai_error", error=str(e))
 
                     if chosen_idx is None:
-                        chosen_idx = 0  # fallback to first
+                        raise RuntimeError("Нельзя достоверно выбрать ответ на анкету")
 
                     chosen = options[chosen_idx]
                     log.info("hh_radio_chosen", question=question[:60], pick=chosen["label"][:40])
@@ -627,6 +613,8 @@ class HHPlaywright:
                         await page.wait_for_timeout(300)
                     except Exception as e:
                         log.warning("hh_radio_click_error", error=str(e))
+        except RuntimeError:
+            raise  # no silent fallback that could submit an unanswered questionnaire
         except Exception as e:
             log.warning("hh_radio_processing_error", error=str(e))
 
@@ -663,37 +651,15 @@ class HHPlaywright:
         # Build one batched prompt
         answers_map: dict[int, str] = {}
         if question_pairs:
+            if not cfg.ai_enabled or not cfg.llm_api_key or not cfg.resume_text.strip():
+                raise RuntimeError("Анкета требует ручного ответа; ИИ-профиль не настроен")
             numbered = "\n".join(f"[{i+1}] {q}" for i, (_, q) in enumerate(question_pairs))
             user_msg = (
                 f"Контекст вакансии: {vacancy_url}\n\n"
                 f"Вопросы работодателя ({len(question_pairs)} шт):\n{numbered}\n\n"
                 "Дай короткие ответы (2-4 предложения каждый) от первого лица. "
                 "Используй ТОЛЬКО факты из резюме, не выдумывай. "
-                "Если есть тестовое задание — выполни. "
-                "Готовые ответы для типовых вопросов:\n"
-                "  - Зарплата → от 150 000 руб на руки, готов обсуждать\n"
-                "  - Местоположение / РФ → Москва, проживаю в РФ\n"
-                "  - Работа на территории заказчика в Москве → готов, разъездной формат приемлем\n"
-                "  - Переезд → НЕ готов к переезду\n"
-                "  - Командировки → готов к редким командировкам\n"
-                "  - Английский → B1 (Intermediate), читаю документацию, базовая переписка\n"
-                "  - Уровень → Middle BA/SA, в IT 3+ года, общий стаж 11+ лет\n"
-                "  - Текущее место → Технологии Нового Поколения, BA/SA, с марта 2023\n"
-                "  - Когда выйдешь → 2-4 недели после оффера (сдача дел на текущем проекте)\n"
-                "  - Причина поиска → ищу проект с большей зоной ответственности и развитием\n"
-                "  - Что ближе BA/SA → одинаково комфортно в обеих ролях, на текущем месте совмещаю\n"
-                "  - Документы (ТЗ, BRD, SRS, ЧТЗ) → ТЗ, BRD/SRS — регулярно; ЧТЗ — по необходимости\n"
-                "  - Опыт REST/SOAP → REST постоянно (проектирование, OpenAPI/Swagger, Postman), SOAP — редко\n"
-                "  - Опыт с платёжными системами → ДА, ЮKassa и Сбербанк (e-commerce), платёжные шлюзы (SaaS-подписки)\n"
-                "  - Опыт с 1С → интеграция (REST API для выгрузки каталога и заказов), не разработка внутри 1С\n"
-                "  - Опыт с CRM → проектирование интеграций, работа с CRM на проектах\n"
-                "  - Опыт с банками / финтех / процессингом → прямого опыта в банке нет; есть интеграции с платёжными провайдерами со стороны мерчанта\n"
-                "  - Опыт с Kafka / RabbitMQ → на уровне аналитика (асинхронные взаимодействия), глубокой настройки не делал\n"
-                "  - SQL → SELECT, JOIN, агрегации, оконные функции — уверенно; PostgreSQL, ClickHouse — базово\n"
-                "  - Agile / Scrum → работаю в Scrum-команде, грумминг, планирование, ретро\n"
-                "  - Метрики продукта → MAU/DAU, удержание, конверсия в подписку, средний чек, воронка заказов, A/B-тесты\n"
-                "  - Внешние заказчики → сбор требований через интервью, анкетирование, анализ документов\n"
-                "  - Приёмо-сдаточные испытания / UAT → проводил с заказчиком на e-commerce проекте\n\n"
+                "Если сведений недостаточно, верни пустую строку для такого ответа. "
                 "Ответь СТРОГО в формате JSON:\n"
                 "{\"1\": \"ответ 1\", \"2\": \"ответ 2\", ...}\n"
                 "Без markdown, без пояснений, только JSON."
@@ -743,7 +709,9 @@ class HHPlaywright:
             return filt[target_idx] if target_idx < len(filt) else None
 
         for i, (ta, question) in enumerate(question_pairs):
-            answer_text = answers_map.get(i + 1) or "Готов обсудить детали на собеседовании."
+            answer_text = answers_map.get(i + 1, "").strip()
+            if not answer_text:
+                raise RuntimeError("Не удалось достоверно ответить на вопрос работодателя")
             filled = False
             for attempt in (1, 2):
                 el = ta if attempt == 1 else await _refind_question_textarea(i)
@@ -1164,6 +1132,8 @@ class HHPlaywright:
             return False
 
     async def bump_resumes(self) -> int:
+        if settings.preview_only:
+            return 0
         """Click 'Поднять в поиске' on all resumes. Returns number bumped."""
         if not self._logged_in:
             if not await self.login():
@@ -1390,7 +1360,7 @@ class HHPlaywright:
                         visible = await el.is_visible()
                         if visible:
                             chat_input = el
-                            log.info("hh_thanks_input_found", selector=sel, in_frame=bool(chat_frame))
+                            log.info("hh_thanks_input_found", selector=sel, in_frame=bool(chatik_frame))
                             break
                 except Exception:
                     pass

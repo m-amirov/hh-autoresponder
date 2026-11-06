@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     tg_api_server: str = ""
     tg_proxy: str = ""                # socks5://user:pass@host:port (опц.)
 
+    # Безопасный режим личного помощника: никаких действий в аккаунте hh.ru.
+    # Бот только ищет вакансии и готовит письма для ручной отправки.
+    preview_only: bool = True
+
     # ── LLM (опционально: только для прохождения тестов работодателя) ──
     ai_enabled: bool = False
     llm_base_url: str = "https://api.polza.ai/api/v1"   # OpenAI-совместимый эндпоинт
@@ -30,31 +34,40 @@ class Settings(BaseSettings):
     hh_resume_id: str = ""            # id резюме (подставится автоматически при первом входе)
 
     # ── Профиль и цель ────────────────────────────────────────
-    desired_position: str = "Performance-маркетолог"
-    desired_salary_min: int = 150000
-    desired_salary_max: int = 400000
+    desired_position: str = "Делопроизводитель / методист"
+    desired_salary_min: int = 0
+    desired_salary_max: int = 0
     resume_text_path: str = "configs/resume.txt"
 
     # ── Поисковые запросы (через запятую) ─────────────────────
-    search_queries_raw: str = "performance маркетолог, интернет-маркетолог, директолог"
+    search_queries_raw: str = (
+        "делопроизводитель, методист, специалист по документообороту, "
+        "специалист учебно-методического отдела"
+    )
+    search_remote_russia: bool = True
+    search_country_area_id: str = "113"  # Россия в справочнике hh.ru
+    search_local_area_enabled: bool = True
+    search_area_id: str = "72"         # Пермь (город), не весь Пермский край
+    search_pages_per_query: int = 1
+    min_relevance_score: int = 60
 
     # ── Скоринг вакансий (всё через запятую) ──────────────────
     # target_keywords — если ХОТЯ БЫ одно слово есть в заголовке, вакансия подходит.
-    target_keywords_raw: str = "маркетолог, marketing, performance, трафик, seo, smm, директолог, таргетолог, ppc, digital"
+    target_keywords_raw: str = "делопроизвод, методист, документооборот, учебно-методич"
     # negative_keywords — если слово есть в заголовке, вакансия отсеивается сразу.
-    negative_keywords_raw: str = "junior, стажёр, стажер, intern, ассистент, помощник, продавец, менеджер по продажам"
+    negative_keywords_raw: str = ""
     # stack_keywords — каждое совпадение в тексте добавляет баллы (бонус).
-    stack_keywords_raw: str = "performance, cpa, roi, drr, seo, smm, таргет, контекст, директ, google ads, аналитика, воронк, unit"
-    salary_floor: int = 100000       # вакансии с указанной ЗП ниже — отсеиваем
+    stack_keywords_raw: str = ""
+    salary_floor: int = 0             # 0 — не отсеивать по зарплате
 
     # ── Сопроводительное письмо (одно на всех) ────────────────
     cover_letter: str = (
-        "Добрый день! Заинтересовала ваша вакансия, у меня релевантный опыт, "
-        "буду рад пообщаться."
+        "Здравствуйте! Меня заинтересовала ваша вакансия. "
+        "Буду рад(а) обсудить требования и рассказать о своём опыте."
     )
 
     # ── Темп / антибан ────────────────────────────────────────
-    check_interval_sec: int = 300
+    check_interval_sec: int = 1800
     browser_headless: bool = True
     proxy_url: str = ""
     min_delay_sec: int = 3
@@ -63,7 +76,7 @@ class Settings(BaseSettings):
     apply_delay_max: int = 68         # пауза между откликами, сек (верх)
     type_delay_min: int = 30
     type_delay_max: int = 120
-    max_applies_per_day_hh: int = 200  # 200 — потолок самого hh
+    max_applies_per_day_hh: int = 5   # дополнительная защита вне preview_only
 
     # ── База ──────────────────────────────────────────────────
     database_url: str = "sqlite+aiosqlite:///data/jobhunter.db"
@@ -75,7 +88,17 @@ class Settings(BaseSettings):
     # ── Производные значения ──────────────────────────────────
     @property
     def search_queries(self) -> list[str]:
-        return _split(self.search_queries_raw) or [self.desired_position]
+        return _split(self.search_queries_raw) or ([self.desired_position] if self.desired_position.strip() else [])
+
+    @property
+    def search_scopes(self) -> list[dict[str, str | bool]]:
+        """OR: remote vacancies nationwide + all formats in the configured city."""
+        scopes: list[dict[str, str | bool]] = []
+        if self.search_remote_russia and self.search_country_area_id.strip():
+            scopes.append({"remote": True, "area": self.search_country_area_id.strip()})
+        if self.search_local_area_enabled and self.search_area_id.strip():
+            scopes.append({"remote": False, "area": self.search_area_id.strip()})
+        return scopes
 
     @property
     def target_keywords(self) -> list[str]:

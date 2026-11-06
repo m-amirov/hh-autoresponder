@@ -216,6 +216,8 @@ class HHOAuth:
         return ""
 
     async def apply(self, vacancy_id: str, message: str = "") -> tuple[bool | str, dict]:
+        if settings.preview_only:
+            return False, {"error": "preview_only"}
         rhash = settings.hh_resume_id
         if not rhash:
             return False, {"error": "no_resume_id"}
@@ -438,6 +440,8 @@ class HHOAuth:
 
         Возвращает {"scanned", "deleted", "names": [...], "error"?}.
         """
+        if settings.preview_only:
+            return {"scanned": 0, "deleted": 0, "names": [], "error": "preview_only"}
         import datetime as _dt
 
         items = await self.list_negotiations(status="active")
@@ -496,6 +500,8 @@ class HHOAuth:
         Возвращает {"bumped", "titles": [...], "blocked", "error"?}.
         blocked — сколько резюме пока нельзя поднять (рано, ждать ~4 часа).
         """
+        if settings.preview_only:
+            return {"bumped": 0, "titles": [], "blocked": 0, "error": "preview_only"}
         token = await self.get_token()
         if not token:
             return {"bumped": 0, "titles": [], "blocked": 0, "error": "no_oauth_token"}
