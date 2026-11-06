@@ -44,6 +44,9 @@ async def sync_applied_from_hh() -> int:
 
 async def run_auto_apply(auto_mode: bool = False, min_score: float = 70):
     log.info("auto_apply_started", auto_mode=auto_mode, min_score=min_score)
+    if settings.preview_only:
+        log.info("auto_apply_blocked_in_preview_mode")
+        return 0
 
     # Платформы на паузе (из scheduler_state.json) — для них пропускаем
     # выборку. Объединяем auto-pause (login_health) и manual-pause (юзер).
@@ -80,7 +83,7 @@ async def run_auto_apply(auto_mode: bool = False, min_score: float = 70):
     from zoneinfo import ZoneInfo as _ZI
     _hour = _dt.now(_ZI("Europe/Moscow")).hour
     _is_daytime = 9 <= _hour < 22
-    effective_min_score = 1 if _is_daytime else 50
+    effective_min_score = max(settings.min_relevance_score, min_score)
     log.info("apply_window", daytime=_is_daytime, min_score=effective_min_score)
 
     # Дневной лимит (только hh)
@@ -150,7 +153,6 @@ async def run_auto_apply(auto_mode: bool = False, min_score: float = 70):
     # тратятся. AI-письмо включается только в Playwright-fallback для вакансий
     # с обязательным тестом/анкетой.
     from app.parsers.letter_template import render_letter
-    STATIC_LETTER = render_letter()  # запасной вариант без названия
 
     # Глобальные ошибки (daily_limit, истёкший токен, нет резюме) одинаково
     # бьют по всем вакансиям платформы — нет смысла ретраить и засорять БД

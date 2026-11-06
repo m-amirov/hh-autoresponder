@@ -30,6 +30,10 @@ PARSERS = _build_parsers()
 
 async def run_vacancy_search():
     log.info("vacancy_search_started")
+    scopes = settings.search_scopes
+    if not SEARCH_QUERIES or not settings.target_keywords or not scopes:
+        log.warning("vacancy_search_not_configured", reason="queries, target keywords and at least one search scope are required")
+        return 0
     total_new = 0
 
     for platform_name, parser in PARSERS.items():
@@ -40,20 +44,20 @@ async def run_vacancy_search():
                 continue
 
             for query in SEARCH_QUERIES:
-                try:
-                    # remote=False → НЕ ставим фильтр schedule=remote, ищем ВСЁ:
-                    # удалёнка, гибрид, офис, по всей России (по запросу пользователя).
-                    vacancies = await parser.search_vacancies(
-                        query,
-                        remote=False,
-                    )
-                    saved = await _save_vacancies(vacancies)
-                    total_new += saved
-                    log.info("search_batch_done", platform=platform_name, query=query, new=saved)
-                    await random_delay(5, 15)
-                except Exception as e:
-                    log.error("search_query_error", platform=platform_name, query=query, error=str(e))
-                    continue
+                for scope in scopes:
+                    try:
+                        vacancies = await parser.search_vacancies(
+                            query, pages=settings.search_pages_per_query, **scope
+                        )
+                        # _save_vacancies deduplicates by (platform, external_id),
+                        # including vacancies returned in both search scopes.
+                        saved = await _save_vacancies(vacancies)
+                        total_new += saved
+                        log.info("search_batch_done", platform=platform_name, query=query, scope=scope, new=saved)
+                        await random_delay(5, 15)
+                    except Exception as e:
+                        log.error("search_query_error", platform=platform_name, query=query, scope=scope, error=str(e))
+                        continue
 
         except Exception as e:
             log.error("parser_error", platform=platform_name, error=str(e))
@@ -199,10 +203,11 @@ async def run_vacancy_analysis():
                 v.ai_reason = analysis.get("reason", "")
                 v.work_format = _work_format
                 v.status = VacancyStatus.ANALYZED
-                # Порог AI убран по запросу пользователя — одобряем ВСЕ
-                # проанализированные вакансии. Бот откликнется на любую, кроме
-                # очевидно сломанных (без url/title).
-                v.status = VacancyStatus.APPROVED
+                v.status = (
+                    VacancyStatus.APPROVED
+                    if analysis.get("is_relevant") and v.ai_score >= settings.min_relevance_score
+                    else VacancyStatus.REJECTED
+                )
                 await session.commit()
 
             analyzed += 1

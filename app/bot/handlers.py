@@ -1,4 +1,3 @@
-import json
 import functools
 
 from aiogram import Router, F
@@ -20,7 +19,6 @@ from app.bot.keyboards import (
     main_menu,
     vacancy_keyboard,
     vacancy_list_keyboard,
-    message_keyboard,
     confirm_apply_keyboard,
     settings_keyboard,
     clear_neg_keyboard,
@@ -62,6 +60,13 @@ def _company_name(vacancy) -> str:
 @router.message(Command("start"))
 @admin_only
 async def cmd_start(message: Message, **kw):
+    if settings.preview_only:
+        await message.answer(
+            "🔍 <b>Личный помощник по поиску работы</b>\n\n"
+            "Бот находит вакансии и готовит письма. Отклики отправляешь только ты на hh.ru.",
+            parse_mode="HTML", reply_markup=main_menu(),
+        )
+        return
     await message.answer(
         "👋 <b>Job Hunter Bot</b>\n\n"
         "Автоматический поиск вакансий аналитика\n"
@@ -206,6 +211,9 @@ async def btn_top(message: Message, **kw):
 @router.message(Command("messages"))
 @admin_only
 async def btn_messages(message: Message, **kw):
+    if settings.preview_only:
+        await message.answer("В режиме предпросмотра переписка hh.ru не читается. Проверь приглашения на сайте.")
+        return
     import html as _html
     await message.answer("🔄 Проверяю приглашения на hh.ru...")
     from app.parsers.hh_oauth import hh_oauth
@@ -541,6 +549,26 @@ async def cb_apply(callback: CallbackQuery, **kw):
         title = vacancy.title
         desc = vacancy.description or ""
 
+        url = vacancy.url
+
+    if settings.preview_only:
+        from urllib.parse import urlparse
+        from app.parsers.letter_template import render_letter
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or parsed.hostname not in {"hh.ru", "www.hh.ru"}:
+            await callback.answer("Некорректная ссылка на вакансию", show_alert=True)
+            return
+        await callback.answer("📝 Письмо подготовлено")
+        await callback.message.answer(
+            f"📝 Письмо для вакансии «{title}» (скопируй при отклике):\n\n"
+            f"{render_letter(title)}\n\n"
+            "Отклик не отправлен. Открой вакансию и отправь его самостоятельно.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🌐 Открыть на hh.ru", url=url)
+            ]]),
+        )
+        return
+
     await callback.answer("🤖 Генерирую письмо...")
 
     letter, _, _ = await claude_ai.generate_cover_letter(title, desc, "")
@@ -554,6 +582,9 @@ async def cb_apply(callback: CallbackQuery, **kw):
 @router.callback_query(F.data.startswith("confirm_apply:"))
 @admin_only
 async def cb_confirm_apply(callback: CallbackQuery, **kw):
+    if settings.preview_only:
+        await callback.answer("В режиме предпросмотра отклики не отправляются", show_alert=True)
+        return
     vacancy_id = int(callback.data.split(":")[1])
 
     async with async_session() as session:
@@ -759,6 +790,9 @@ async def cb_toggle_pause(callback: CallbackQuery, **kw):
 @router.callback_query(F.data == "toggle_auto")
 @admin_only
 async def cb_toggle_auto(callback: CallbackQuery, **kw):
+    if settings.preview_only:
+        await callback.answer("Автоотклики отключены в режиме предпросмотра", show_alert=True)
+        return
     if not _scheduler:
         await callback.answer("Scheduler не найден")
         return
@@ -790,6 +824,9 @@ async def cb_show_balance(callback: CallbackQuery, **kw):
 @router.callback_query(F.data == "bump_resume")
 @admin_only
 async def cb_bump_resume(callback: CallbackQuery, **kw):
+    if settings.preview_only:
+        await callback.answer("В режиме предпросмотра резюме не изменяется", show_alert=True)
+        return
     await callback.answer("⬆️ Поднимаю резюме...")
     from app.parsers.hh_oauth import hh_oauth
     res = await hh_oauth.bump_resumes()
@@ -824,6 +861,9 @@ _BEHAVIOR_DEFAULTS = {
 @router.callback_query(F.data == "behavior_menu")
 @admin_only
 async def cb_behavior_menu(callback: CallbackQuery, **kw):
+    if settings.preview_only:
+        await callback.answer("В режиме предпросмотра доступны только поиск и письма", show_alert=True)
+        return
     await callback.answer()
     flags = _scheduler.get_flags() if _scheduler else dict(_BEHAVIOR_DEFAULTS)
     await callback.message.answer(
@@ -842,6 +882,9 @@ async def cb_behavior_menu(callback: CallbackQuery, **kw):
 @router.callback_query(F.data.startswith("bflag:"))
 @admin_only
 async def cb_bflag(callback: CallbackQuery, **kw):
+    if settings.preview_only:
+        await callback.answer("Настройка недоступна в режиме предпросмотра", show_alert=True)
+        return
     name = callback.data.split(":", 1)[1]
     if not _scheduler:
         await callback.answer("Планировщик ещё не готов", show_alert=True)
@@ -898,6 +941,9 @@ async def cb_clear_neg_menu(callback: CallbackQuery, **kw):
 @router.callback_query(F.data.startswith("clearneg:"))
 @admin_only
 async def cb_clear_neg_run(callback: CallbackQuery, **kw):
+    if settings.preview_only:
+        await callback.answer("Удаление откликов отключено", show_alert=True)
+        return
     mode = callback.data.split(":", 1)[1]
     from app.parsers.hh_oauth import hh_oauth
 
@@ -944,6 +990,9 @@ async def cb_clear_neg_run(callback: CallbackQuery, **kw):
 @router.callback_query(F.data == "thank_rejections")
 @admin_only
 async def cb_thank_rejections(callback: CallbackQuery, **kw):
+    if settings.preview_only:
+        await callback.answer("Отправка сообщений отключена", show_alert=True)
+        return
     await callback.answer("💬 Отправляю благодарности...")
     from app.workers.message_worker import process_rejection_thanks
     count = await process_rejection_thanks(max_count=3)
@@ -990,6 +1039,9 @@ class LoginSG(StatesGroup):
 @router.message(Command("login"))
 @admin_only
 async def cmd_login(message: Message, state: FSMContext, **kw):
+    if settings.preview_only:
+        await message.answer("Для поиска и просмотра вакансий вход на hh.ru не нужен.")
+        return
     """Вход на hh.ru по одноразовому коду (телефон → код)."""
     await state.clear()
     default = settings.hh_login or ""
@@ -1080,6 +1132,9 @@ async def login_code(message: Message, state: FSMContext, **kw):
 @router.message(Command("test_apply"))
 @admin_only
 async def cmd_test_apply(message: Message, **kw):
+    if settings.preview_only:
+        await message.answer("Тестовая отправка отключена в режиме предпросмотра.")
+        return
     """Run N test applies on hh with full screenshots in TG.
     Usage: /test_apply [count]   default 10
     """
@@ -1112,7 +1167,6 @@ async def cmd_test_apply(message: Message, **kw):
         return
 
     from app.parsers.hh_oauth import hh_oauth
-    from app.parsers.hh_api import hh_api_client
     from app.ai.claude import claude_ai
     import asyncio as _async
     import re as _re
@@ -1243,6 +1297,9 @@ async def cmd_test_apply(message: Message, **kw):
 @admin_only
 async def cmd_negotiations(message: Message, **kw):
     """Проверить статусы откликов на hh.ru."""
+    if settings.preview_only:
+        await message.answer("В режиме предпросмотра статусы откликов не считываются. Проверяй их на hh.ru.")
+        return
     from app.parsers.hh import HHParser
     parser = HHParser()
     pw = parser._get_playwright()

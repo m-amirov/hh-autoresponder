@@ -1,4 +1,3 @@
-import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -30,6 +29,13 @@ class WorkerScheduler:
         self.notify_messages = state.get("notify_messages", True)
         self.thank_rejections = state.get("thank_rejections", True)
         self.bump_resume = state.get("bump_resume", True)
+        if settings.preview_only:
+            # Ignore stale persisted flags from a previous installation.
+            self.auto_apply = False
+            self.pass_tests = False
+            self.notify_messages = False
+            self.thank_rejections = False
+            self.bump_resume = False
         self.min_ai_score = 30
         self.notify = notify_callback  # async fn(text) -> sends to TG
 
@@ -52,6 +58,8 @@ class WorkerScheduler:
         self.manual_paused_platforms: set[str] = set(state.get("manual_paused_platforms", []))
         # Cooldown уведомлений о слетевшей сессии: { "habr": ISO8601, "hh": ISO8601 }
         self._last_login_alert: dict[str, str] = dict(state.get("last_login_alert", {}))
+        if settings.preview_only:
+            self._save_state()  # discard unsafe flags persisted by the original bot
 
     def _load_state(self) -> dict:
         try:
@@ -192,7 +200,7 @@ class WorkerScheduler:
             log.error("job_analyze_error", error=str(e))
 
     async def _job_messages(self):
-        if self.is_paused or not self.notify_messages:
+        if settings.preview_only or self.is_paused or not self.notify_messages:
             return
         try:
             new_msgs = await check_all_messages()
@@ -311,7 +319,7 @@ class WorkerScheduler:
             log.error("job_messages_error", error=str(e))
 
     async def _job_apply(self):
-        if self.is_paused or not self.auto_apply:
+        if settings.preview_only or self.is_paused or not self.auto_apply:
             return
         try:
             # Уведомления больше не отсылаем поминутно — статистика идёт
@@ -321,7 +329,7 @@ class WorkerScheduler:
             log.error("job_apply_error", error=str(e))
 
     async def _job_bump_resume(self):
-        if self.is_paused or not self.bump_resume:
+        if settings.preview_only or self.is_paused or not self.bump_resume:
             return
         try:
             from app.parsers.hh_playwright import hh_playwright
@@ -340,6 +348,8 @@ class WorkerScheduler:
 
         hh — через httpx (быстро, без Playwright).
         """
+        if settings.preview_only:
+            return
         try:
             import httpx as _httpx
             from app.parsers.hh_oauth import hh_oauth
@@ -636,6 +646,9 @@ class WorkerScheduler:
         log.info("scheduler_resumed")
 
     def set_auto_apply(self, enabled: bool):
+        if settings.preview_only and enabled:
+            log.warning("auto_apply_refused_in_preview_mode")
+            return
         self.auto_apply = enabled
         self._save_state()
         log.info("auto_apply_set", enabled=enabled)
@@ -647,6 +660,9 @@ class WorkerScheduler:
         return {n: bool(getattr(self, n, True)) for n in self.FLAG_NAMES}
 
     def set_flag(self, name: str, value: bool):
+        if settings.preview_only and value:
+            log.warning("behavior_flag_refused_in_preview_mode", flag=name)
+            return
         if name in self.FLAG_NAMES:
             setattr(self, name, value)
             self._save_state()

@@ -4,9 +4,18 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
 )
+from app.config import settings
 
 
 def main_menu() -> ReplyKeyboardMarkup:
+    if settings.preview_only:
+        return ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="🔍 Вакансии"), KeyboardButton(text="📊 Статистика")],
+                [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="📋 Логи")],
+            ],
+            resize_keyboard=True,
+        )
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🔍 Вакансии"), KeyboardButton(text="📊 Статистика")],
@@ -20,7 +29,7 @@ def main_menu() -> ReplyKeyboardMarkup:
 def vacancy_keyboard(vacancy_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="✅ Откликнуться", callback_data=f"apply:{vacancy_id}"),
+            InlineKeyboardButton(text="📝 Письмо и ссылка", callback_data=f"apply:{vacancy_id}"),
             InlineKeyboardButton(text="❌ Пропустить", callback_data=f"skip:{vacancy_id}"),
         ],
         [
@@ -35,7 +44,7 @@ def vacancy_list_keyboard(vacancy_ids: list[int], page: int, total_pages: int, p
     for i, vid in enumerate(vacancy_ids):
         rows.append([
             InlineKeyboardButton(text=f"📄 Подробнее #{i+1}", callback_data=f"details:{vid}"),
-            InlineKeyboardButton(text="✅", callback_data=f"apply:{vid}"),
+            InlineKeyboardButton(text="📝", callback_data=f"apply:{vid}"),
             InlineKeyboardButton(text="❌", callback_data=f"skip:{vid}"),
         ])
 
@@ -70,6 +79,11 @@ def confirm_apply_keyboard(vacancy_id: int) -> InlineKeyboardMarkup:
 
 def settings_keyboard(is_paused: bool = False, auto_apply: bool = False) -> InlineKeyboardMarkup:
     pause_text = "▶️ Возобновить" if is_paused else "⏸ Пауза"
+    if settings.preview_only:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=pause_text, callback_data="toggle_pause")],
+            [InlineKeyboardButton(text="🔄 Искать сейчас", callback_data="force_search")],
+        ])
     auto_text = "🟢 Авто-отклик ВКЛ" if auto_apply else "⚪ Авто-отклик ВЫКЛ"
     return InlineKeyboardMarkup(inline_keyboard=[
         [

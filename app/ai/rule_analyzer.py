@@ -38,8 +38,8 @@ def analyze_vacancy(
     salary_to: int | None = None,
     is_remote: bool = False,
     salary_currency: str = "",
-    desired_salary_min: int = 150000,
-    desired_salary_max: int = 400000,
+    desired_salary_min: int = 0,
+    desired_salary_max: int = 0,
 ) -> dict:
     t = (title or "").lower()
     d = (description or "").lower()
@@ -76,7 +76,9 @@ def analyze_vacancy(
             }
 
     # 4. Считаем балл
-    score = 30  # совпал заголовок
+    # Совпавший заголовок уже достаточен для очереди ручного просмотра.
+    # Стек, зарплата и формат работы дают бонусы ранжированию.
+    score = 60
     stack_hits = sum(1 for kw in settings.stack_keywords if kw.lower() in full)
     stack_score = min(stack_hits * 5, 40)
     score += stack_score

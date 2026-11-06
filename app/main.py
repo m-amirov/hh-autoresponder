@@ -3,7 +3,6 @@ from pathlib import Path
 
 import structlog
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 
@@ -66,7 +65,6 @@ async def main():
         session = AiohttpSession(api=settings.tg_api_server)
         log.info("using_custom_tg_api", api=settings.tg_api_server)
     elif settings.tg_proxy:
-        from aiohttp import BasicAuth
         session = AiohttpSession(proxy=settings.tg_proxy)
         log.info("using_tg_proxy", proxy=settings.tg_proxy)
     bot = Bot(token=settings.tg_bot_token, session=session)
@@ -78,7 +76,7 @@ async def main():
     notifier.configure(lambda text: notify_telegram(bot, text), verbose=True)
 
     playwright_ok = HAS_PLAYWRIGHT
-    if playwright_ok:
+    if playwright_ok and not settings.preview_only:
         try:
             await browser_manager.start()
             log.info("playwright_started")
@@ -86,7 +84,8 @@ async def main():
             playwright_ok = False
             log.warning("playwright_start_failed", error=str(e), mode="api_only")
     else:
-        log.info("playwright_not_available", mode="api_only")
+        playwright_ok = False
+        log.info("browser_not_started", mode="preview_only" if settings.preview_only else "api_only")
 
     scheduler = WorkerScheduler(
         notify_callback=lambda text: notify_telegram(bot, text)
@@ -99,11 +98,10 @@ async def main():
     if not welcome_marker.exists():
         await notify_telegram(
             bot,
-            "👋 <b>Привет, подписчик канала</b> https://t.me/trafficisobar!\n\n"
-            "Спасибо, что запустил бота — теперь он сам ищет вакансии на hh.ru "
-            "и откликается за тебя.\n\n"
-            "Настройки — в файле <code>.env</code>, управление — через меню бота ниже.\n"
-            "Автор и полезное про маркетинг: https://t.me/trafficisobar",
+            "👋 <b>Личный помощник по поиску работы</b>\n\n"
+            "В режиме предпросмотра бот ищет вакансии и готовит письма, "
+            "но ничего не отправляет на hh.ru.\n\n"
+            "Настройки — в файле <code>.env</code>, управление — через меню бота.",
         )
         try:
             welcome_marker.parent.mkdir(parents=True, exist_ok=True)
@@ -118,7 +116,7 @@ async def main():
         f"Зарплата: {settings.desired_salary_min:,}–{settings.desired_salary_max:,}\n"
         f"Интервал: {settings.check_interval_sec // 60} мин\n"
         f"Лимит: {settings.max_applies_per_day} откликов/день\n"
-        f"Режим: {'Playwright' if playwright_ok else 'API-only'}",
+        f"Режим: {'Только подбор и предпросмотр' if settings.preview_only else ('Playwright' if playwright_ok else 'API-only')}",
     )
 
     # Wait for proxy connectivity before starting polling
